@@ -32,22 +32,76 @@ const prepareData = async () => {
   return csv.data;
 };
 
-const toTensors = (csvData, testSize) => {
-  const data = _.shuffle(csvData);
+const normalize = (val, min, max) => {
+  var delta = max - min;
+  return (val - min) / delta;
+};
+
+const createDataSets = (data, features, testSize, batchSize) => {
+  // const data = _.shuffle(csvData);
+
+  // const X = data.map(r => features.map(f => r[f]));
+  // const y = data.map(r => oneHot(r.Outcome));
+
+  // const [xTrain, xTest] = _.chunk(X, parseInt((1 - testSize) * X.length, 10));
+  // const [yTrain, yTest] = _.chunk(y, parseInt((1 - testSize) * y.length, 10));
+
+  // return [
+  //   tf.data.array(xTrain),
+  //   tf.data.array(xTest),
+  //   tf.data.array(yTrain),
+  //   tf.data.array(yTest)
+  // ];
+
+  // const normalized = [];
+
+  // for (const f of features) {
+  //   const values = data.map(r => r[f]);
+  //   const min = _.min(values);
+  //   const max = _.max(values);
+
+  //   const norm = values.map(val => {
+  //     if (val === undefined) {
+  //       return 0;
+  //     }
+  //     return normalize(val, min, max);
+  //   });
+  //   normalized.push(norm);
+  // }
+
+  // const rowCount = data.length;
+  // const colCount = features.length;
+
+  // const X = [];
+
+  // for (let row = 0; row < rowCount; row++) {
+  //   X.push([]);
+  //   for (let col = 0; col < colCount; col++) {
+  //     // i
+  //     X[row].push(normalized[col][row]);
+  //   }
+  // }
 
   const X = data.map(r =>
-    Object.values(r).slice(0, Object.values(r).length - 1)
+    features.map(f => {
+      const val = r[f];
+      return val === undefined ? 0 : val;
+    })
   );
-  const y = data.map(r => oneHot(r.Outcome));
+  const y = data.map(r => {
+    const outcome = r.Outcome === undefined ? 0 : r.Outcome;
+    return oneHot(outcome);
+  });
 
-  const [xTrain, xTest] = _.chunk(X, parseInt((1 - testSize) * X.length, 10));
-  const [yTrain, yTest] = _.chunk(y, parseInt((1 - testSize) * y.length, 10));
+  const splitIdx = parseInt((1 - testSize) * data.length, 10);
+
+  const ds = tf.data
+    .zip({ xs: tf.data.array(X), ys: tf.data.array(y) })
+    .shuffle(data.length, 42);
 
   return [
-    tf.tensor2d(xTrain),
-    tf.tensor(xTest),
-    tf.tensor2d(yTrain),
-    tf.tensor(yTest)
+    ds.take(splitIdx).batch(batchSize),
+    ds.skip(splitIdx + 1).batch(batchSize)
   ];
 };
 
@@ -146,71 +200,128 @@ const renderScatter = (container, data, columns, config) => {
   });
 };
 
+const trainSimpleModel = async (featureCount, trainDs, validDs) => {
+  // const arr = await ds.take(10).toArray();
+
+  // console.log(arr[0].xs.arraySync());
+
+  const model = tf.sequential();
+  model.add(
+    tf.layers.dense({
+      units: 2,
+      activation: "softmax",
+      inputShape: [featureCount]
+    })
+  );
+  const optimizer = tf.train.adam(0.001);
+  model.compile({
+    optimizer: optimizer,
+    loss: "binaryCrossentropy",
+    metrics: ["accuracy"]
+  });
+  const trainLogs = [];
+  const lossContainer = document.getElementById("loss-cont");
+  const accContainer = document.getElementById("acc-cont");
+  console.log("Training...");
+  await model.fitDataset(trainDs, {
+    epochs: 30,
+    validationData: validDs,
+    callbacks: {
+      onEpochEnd: async (epoch, logs) => {
+        trainLogs.push(logs);
+        tfvis.show.history(lossContainer, trainLogs, ["loss", "val_loss"]);
+        tfvis.show.history(accContainer, trainLogs, ["acc", "val_acc"]);
+      }
+    }
+  });
+};
+
+const trainComplexModel = async (featureCount, trainDs, validDs) => {
+  // const arr = await ds.take(10).toArray();
+
+  // console.log(arr[0].xs.arraySync());
+
+  const model = tf.sequential();
+  model.add(
+    tf.layers.dense({
+      units: 12,
+      activation: "relu",
+      inputShape: [featureCount]
+    })
+  );
+  model.add(
+    tf.layers.dense({
+      units: 2,
+      activation: "softmax"
+    })
+  );
+  const optimizer = tf.train.adam(0.001);
+  model.compile({
+    optimizer: optimizer,
+    loss: "binaryCrossentropy",
+    metrics: ["accuracy"]
+  });
+  const trainLogs = [];
+  const lossContainer = document.getElementById("loss-cont");
+  const accContainer = document.getElementById("acc-cont");
+  console.log("Training...");
+  await model.fitDataset(trainDs, {
+    epochs: 30,
+    validationData: validDs,
+    callbacks: {
+      onEpochEnd: async (epoch, logs) => {
+        trainLogs.push(logs);
+        tfvis.show.history(lossContainer, trainLogs, ["loss", "val_loss"]);
+        tfvis.show.history(accContainer, trainLogs, ["acc", "val_acc"]);
+      }
+    }
+  });
+};
+
 const run = async () => {
   const data = await prepareData();
+  // console.log(data[0]);
 
-  renderOutcomes(data);
+  // renderOutcomes(data);
 
-  renderHistogram("insulin-cont", data, "Insulin", {
-    title: "Insulin levels",
-    xLabel: "Insulin 2-hour serum, mu U/ml"
-  });
+  // renderHistogram("insulin-cont", data, "Insulin", {
+  //   title: "Insulin levels",
+  //   xLabel: "Insulin 2-hour serum, mu U/ml"
+  // });
 
-  renderHistogram("glucose-cont", data, "Glucose", {
-    title: "Glucose concentration",
-    xLabel: "Plasma glucose concentration (2 hour after glucose tolerance test)"
-  });
+  // renderHistogram("glucose-cont", data, "Glucose", {
+  //   title: "Glucose concentration",
+  //   xLabel: "Plasma glucose concentration (2 hour after glucose tolerance test)"
+  // });
 
-  renderHistogram("age-cont", data, "Age", {
-    title: "Age",
-    xLabel: "age (years)"
-  });
+  // renderHistogram("age-cont", data, "Age", {
+  //   title: "Age",
+  //   xLabel: "age (years)"
+  // });
 
-  renderScatter("glucose-age-cont", data, ["Glucose", "Age"], {
-    title: "Glucose vs Age",
-    xLabel: "Glucose",
-    yLabel: "Age"
-  });
+  // renderScatter("glucose-age-cont", data, ["Glucose", "Age"], {
+  //   title: "Glucose vs Age",
+  //   xLabel: "Glucose",
+  //   yLabel: "Age"
+  // });
 
-  renderScatter("skin-bmi-cont", data, ["SkinThickness", "BMI"], {
-    title: "Skin thickness vs BMI",
-    xLabel: "Skin thickness",
-    yLabel: "BMI"
-  });
+  // renderScatter("skin-bmi-cont", data, ["SkinThickness", "BMI"], {
+  //   title: "Skin thickness vs BMI",
+  //   xLabel: "Skin thickness",
+  //   yLabel: "BMI"
+  // });
 
-  // const [xTrain, xTest, yTrain, yTest] = toTensors(data, 0.1);
-
-  // console.log(xTrain.shape);
-  // const model = tf.sequential();
-  // model.add(
-  //   tf.layers.dense({
-  //     units: 32,
-  //     activation: "relu",
-  //     inputShape: [xTrain.shape[1]]
-  //   })
+  // const [xTrain, xTest, yTrain, yTest] = toTensors(
+  //   data,
+  //   ["Glucose", "Age", "BMI"],
+  //   0.1
   // );
-  // model.add(tf.layers.dense({ units: 2, activation: "softmax" }));
-  // const optimizer = tf.train.adam(0.001);
-  // model.compile({
-  //   optimizer: optimizer,
-  //   loss: "categoricalCrossentropy",
-  //   metrics: ["accuracy"]
-  // });
-  // const trainLogs = [];
-  // const lossContainer = document.getElementById("loss-cont");
-  // const accContainer = document.getElementById("acc-cont");
-  // console.log("Training...");
-  // await model.fit(xTrain, yTrain, {
-  //   validationData: [xTest, yTest],
-  //   epochs: 100,
-  //   callbacks: {
-  //     onEpochEnd: async (epoch, logs) => {
-  //       trainLogs.push(logs);
-  //       tfvis.show.history(lossContainer, trainLogs, ["loss", "val_loss"]);
-  //       tfvis.show.history(accContainer, trainLogs, ["acc", "val_acc"]);
-  //     }
-  //   }
-  // });
+
+  // const features = ["Glucose"];
+
+  // const [trainDs, validDs] = createDataSets(data, features, 0.1, 16);
+
+  // trainSimpleModel(features.length, trainDs, validDs);
 
   // const preds = model.predict(tf.slice2d(xTest, 1, 1)).dataSync();
   // console.log("Prediction:" + preds);
