@@ -22,7 +22,7 @@ Papa.parsePromise = function(file) {
   });
 };
 
-const oneHot = outcome => Array.from(tf.oneHot([outcome], 2).dataSync());
+const oneHot = outcome => Array.from(tf.oneHot(outcome, 2).dataSync());
 
 const prepareData = async () => {
   const csv = await Papa.parsePromise(
@@ -32,56 +32,7 @@ const prepareData = async () => {
   return csv.data;
 };
 
-const normalize = (val, min, max) => {
-  var delta = max - min;
-  return (val - min) / delta;
-};
-
 const createDataSets = (data, features, testSize, batchSize) => {
-  // const data = _.shuffle(csvData);
-
-  // const X = data.map(r => features.map(f => r[f]));
-  // const y = data.map(r => oneHot(r.Outcome));
-
-  // const [xTrain, xTest] = _.chunk(X, parseInt((1 - testSize) * X.length, 10));
-  // const [yTrain, yTest] = _.chunk(y, parseInt((1 - testSize) * y.length, 10));
-
-  // return [
-  //   tf.data.array(xTrain),
-  //   tf.data.array(xTest),
-  //   tf.data.array(yTrain),
-  //   tf.data.array(yTest)
-  // ];
-
-  // const normalized = [];
-
-  // for (const f of features) {
-  //   const values = data.map(r => r[f]);
-  //   const min = _.min(values);
-  //   const max = _.max(values);
-
-  //   const norm = values.map(val => {
-  //     if (val === undefined) {
-  //       return 0;
-  //     }
-  //     return normalize(val, min, max);
-  //   });
-  //   normalized.push(norm);
-  // }
-
-  // const rowCount = data.length;
-  // const colCount = features.length;
-
-  // const X = [];
-
-  // for (let row = 0; row < rowCount; row++) {
-  //   X.push([]);
-  //   for (let col = 0; col < colCount; col++) {
-  //     // i
-  //     X[row].push(normalized[col][row]);
-  //   }
-  // }
-
   const X = data.map(r =>
     features.map(f => {
       const val = r[f];
@@ -101,7 +52,9 @@ const createDataSets = (data, features, testSize, batchSize) => {
 
   return [
     ds.take(splitIdx).batch(batchSize),
-    ds.skip(splitIdx + 1).batch(batchSize)
+    ds.skip(splitIdx + 1).batch(batchSize),
+    tf.tensor(X.slice(splitIdx)),
+    tf.tensor(y.slice(splitIdx))
   ];
 };
 
@@ -200,11 +153,7 @@ const renderScatter = (container, data, columns, config) => {
   });
 };
 
-const trainSimpleModel = async (featureCount, trainDs, validDs) => {
-  // const arr = await ds.take(10).toArray();
-
-  // console.log(arr[0].xs.arraySync());
-
+const trainLogisticRegression = async (featureCount, trainDs, validDs) => {
   const model = tf.sequential();
   model.add(
     tf.layers.dense({
@@ -224,7 +173,7 @@ const trainSimpleModel = async (featureCount, trainDs, validDs) => {
   const accContainer = document.getElementById("acc-cont");
   console.log("Training...");
   await model.fitDataset(trainDs, {
-    epochs: 30,
+    epochs: 100,
     validationData: validDs,
     callbacks: {
       onEpochEnd: async (epoch, logs) => {
@@ -234,6 +183,8 @@ const trainSimpleModel = async (featureCount, trainDs, validDs) => {
       }
     }
   });
+
+  return model;
 };
 
 const trainComplexModel = async (featureCount, trainDs, validDs) => {
@@ -255,7 +206,7 @@ const trainComplexModel = async (featureCount, trainDs, validDs) => {
       activation: "softmax"
     })
   );
-  const optimizer = tf.train.adam(0.001);
+  const optimizer = tf.train.adam(0.0001);
   model.compile({
     optimizer: optimizer,
     loss: "binaryCrossentropy",
@@ -266,7 +217,7 @@ const trainComplexModel = async (featureCount, trainDs, validDs) => {
   const accContainer = document.getElementById("acc-cont");
   console.log("Training...");
   await model.fitDataset(trainDs, {
-    epochs: 30,
+    epochs: 100,
     validationData: validDs,
     callbacks: {
       onEpochEnd: async (epoch, logs) => {
@@ -276,6 +227,8 @@ const trainComplexModel = async (featureCount, trainDs, validDs) => {
       }
     }
   });
+
+  return model;
 };
 
 const run = async () => {
@@ -321,11 +274,30 @@ const run = async () => {
 
   // const [trainDs, validDs] = createDataSets(data, features, 0.1, 16);
 
-  // trainSimpleModel(features.length, trainDs, validDs);
+  // trainLogisticRegression(features.length, trainDs, validDs);
 
-  // const preds = model.predict(tf.slice2d(xTest, 1, 1)).dataSync();
-  // console.log("Prediction:" + preds);
-  // console.log("Real:" + yTest.slice(1, 1).dataSync());
+  const features = ["Glucose", "Age", "Insulin", "BloodPressure"];
+
+  const [trainDs, validDs, xTest, yTest] = createDataSets(
+    data,
+    features,
+    0.1,
+    16
+  );
+
+  const model = await trainComplexModel(features.length, trainDs, validDs);
+
+  const preds = model.predict(xTest).argMax(-1);
+  const labels = yTest.argMax(-1);
+
+  const confusionMatrix = await tfvis.metrics.confusionMatrix(labels, preds);
+
+  const container = document.getElementById("confusion-matrix");
+
+  tfvis.render.confusionMatrix(container, {
+    values: confusionMatrix,
+    tickLabels: ["Healthy", "Diabetic"]
+  });
 };
 
 if (document.readyState !== "loading") {
