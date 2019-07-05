@@ -188,10 +188,6 @@ const trainLogisticRegression = async (featureCount, trainDs, validDs) => {
 };
 
 const trainComplexModel = async (featureCount, trainDs, validDs) => {
-  // const arr = await ds.take(10).toArray();
-
-  // console.log(arr[0].xs.arraySync());
-
   const model = tf.sequential();
   model.add(
     tf.layers.dense({
@@ -233,50 +229,37 @@ const trainComplexModel = async (featureCount, trainDs, validDs) => {
 
 const run = async () => {
   const data = await prepareData();
-  // console.log(data[0]);
 
-  // renderOutcomes(data);
+  renderOutcomes(data);
 
-  // renderHistogram("insulin-cont", data, "Insulin", {
-  //   title: "Insulin levels",
-  //   xLabel: "Insulin 2-hour serum, mu U/ml"
-  // });
+  renderHistogram("insulin-cont", data, "Insulin", {
+    title: "Insulin levels",
+    xLabel: "Insulin 2-hour serum, mu U/ml"
+  });
 
-  // renderHistogram("glucose-cont", data, "Glucose", {
-  //   title: "Glucose concentration",
-  //   xLabel: "Plasma glucose concentration (2 hour after glucose tolerance test)"
-  // });
+  renderHistogram("glucose-cont", data, "Glucose", {
+    title: "Glucose concentration",
+    xLabel: "Plasma glucose concentration (2 hour after glucose tolerance test)"
+  });
 
-  // renderHistogram("age-cont", data, "Age", {
-  //   title: "Age",
-  //   xLabel: "age (years)"
-  // });
+  renderHistogram("age-cont", data, "Age", {
+    title: "Age",
+    xLabel: "age (years)"
+  });
 
-  // renderScatter("glucose-age-cont", data, ["Glucose", "Age"], {
-  //   title: "Glucose vs Age",
-  //   xLabel: "Glucose",
-  //   yLabel: "Age"
-  // });
+  renderScatter("glucose-age-cont", data, ["Glucose", "Age"], {
+    title: "Glucose vs Age",
+    xLabel: "Glucose",
+    yLabel: "Age"
+  });
 
-  // renderScatter("skin-bmi-cont", data, ["SkinThickness", "BMI"], {
-  //   title: "Skin thickness vs BMI",
-  //   xLabel: "Skin thickness",
-  //   yLabel: "BMI"
-  // });
+  renderScatter("skin-bmi-cont", data, ["SkinThickness", "BMI"], {
+    title: "Skin thickness vs BMI",
+    xLabel: "Skin thickness",
+    yLabel: "BMI"
+  });
 
-  // const [xTrain, xTest, yTrain, yTest] = toTensors(
-  //   data,
-  //   ["Glucose", "Age", "BMI"],
-  //   0.1
-  // );
-
-  // const features = ["Glucose"];
-
-  // const [trainDs, validDs] = createDataSets(data, features, 0.1, 16);
-
-  // trainLogisticRegression(features.length, trainDs, validDs);
-
-  const features = ["Glucose", "Age", "Insulin", "BloodPressure"];
+  const features = ["Glucose"];
 
   const [trainDs, validDs, xTest, yTest] = createDataSets(
     data,
@@ -285,7 +268,22 @@ const run = async () => {
     16
   );
 
-  const model = await trainComplexModel(features.length, trainDs, validDs);
+  const model = await trainLogisticRegression(
+    features.length,
+    trainDs,
+    validDs
+  );
+
+  // const features = ["Glucose", "Age", "Insulin", "BloodPressure"];
+
+  // const [trainDs, validDs, xTest, yTest] = createDataSets(
+  //   data,
+  //   features,
+  //   0.1,
+  //   16
+  // );
+
+  // const model = await trainComplexModel(features.length, trainDs, validDs);
 
   const preds = model.predict(xTest).argMax(-1);
   const labels = yTest.argMax(-1);
